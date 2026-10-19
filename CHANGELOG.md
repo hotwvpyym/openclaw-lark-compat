@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026.10.8 — 2026-10-19（npm 10.7 渠道修复重发 · 三渠道统一）
+
+**背景与变更：**
+
+- **修复 npm 10.7 渠道打包事故**：2026.10.7 发布时 npm 渠道包遗漏 `dist/` 构建产物（git 仓库不跟踪 dist，发布流程从 clone 源码打包所致），该渠道包不完整、无法运行。
+- **升版重发**：npm 撤回受账号 2FA 策略限制（unpublish 需 2FA 验证），坏版本无法删除，故升版发布 **2026.10.8**（内容与 2026.10.7 同源、构建产物完整），三渠道（npm / GitHub Release / ClawHub）统一为 2026.10.8。
+- 功能变更与 2026.10.7 完全一致：OpenClaw 2026.10.5 兼容、footer 读库双路径修复（session_nodes / session_entries）、getSessionEntry 迁移、P6 措辞修复、实验三项不进标品。
+- `package.json`：版本号 `2026.10.7 → 2026.10.8`。
+- README（中英双语）：当前版本与安装示例同步 2026.10.8，补充 10.7 npm 事故说明。
+
+**发布形态：**
+
+- 权威 tgz：`hotwvpyym-openclaw-lark-2026.10.8.tgz`
+- 三渠道同源发布：npm `@hotwvpyym/openclaw-lark@2026.10.8`（latest）/ GitHub Release `v2026.10.8` / ClawHub 2026.10.8
+- 兼容范围不变：OpenClaw `>=2026.8.1`
+
 All notable changes to this project are documented in this file.
 
 ## 2026.10.7 — 2026-10-19（OpenClaw 2026.10.5 兼容 + footer 读库双路径修复）
