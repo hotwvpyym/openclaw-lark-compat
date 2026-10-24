@@ -98,6 +98,30 @@ async function tryLoadLegacyCommandAuth(): Promise<LegacyCommandAuthModule | nul
   return null;
 }
 
+/**
+ * 合并命令 owner 白名单：账号级 allowFrom ∪ 全局 commands.ownerAllowFrom。
+ *
+ * OpenClaw 配对（pairing）成功后会把已批准的主人写入顶层 commands.ownerAllowFrom，
+ * 条目形如 "feishu:ou_xxx"（channel:senderId）。若只传账号级 configuredAllowFrom，
+ * 未显式配置 allowFrom 的 paired 主人会被 ingress 判为 command_unauthorized，
+ * 导致系统命令静默结束（delivered=false）。此处按本 channel 前缀归一化为纯
+ * senderId 后并入，其他 channel 的 owner 条目不影响 feishu 授权。
+ */
+export function mergeCommandOwnerAllowFrom(
+  configuredAllowFrom: string[],
+  cfg?: { commands?: { ownerAllowFrom?: unknown } },
+): string[] {
+  const globalCommandOwners = Array.isArray(cfg?.commands?.ownerAllowFrom)
+    ? (cfg.commands.ownerAllowFrom as unknown[])
+    : [];
+  const feishuCommandOwners = globalCommandOwners
+    .map((entry) => String(entry))
+    .filter((entry) => /^feishu:/i.test(entry))
+    .map((entry) => entry.replace(/^feishu:/i, ''))
+    .filter(Boolean);
+  return Array.from(new Set([...configuredAllowFrom, ...feishuCommandOwners]));
+}
+
 async function resolveCommandAuthorizationViaIngress(
   params: ResolveSenderCommandAuthorizationCompatParams,
 ): Promise<ResolveSenderCommandAuthorizationCompatResult> {
@@ -112,6 +136,14 @@ async function resolveCommandAuthorizationViaIngress(
   if (!params.senderId) {
     return { commandAuthorized: false };
   }
+
+  // 命令 owner 白名单 = 账号级 allowFrom ∪ 全局 commands.ownerAllowFrom
+  // （配对成功时 OpenClaw 会把主人写入顶层 commands.ownerAllowFrom，条目形如
+  //  "feishu:ou_xxx"；未并入时 paired 主人未配 allowFrom 会被 ingress 静默拒绝）。
+  const commandOwnerAllowFrom = mergeCommandOwnerAllowFrom(
+    params.configuredAllowFrom,
+    params.cfg as { commands?: { ownerAllowFrom?: unknown } },
+  );
 
   const ingress = await resolveChannelMessageIngress({
     channelId: params.channelId,
@@ -146,7 +178,7 @@ async function resolveCommandAuthorizationViaIngress(
       allowTextCommands: true,
       hasControlCommand: true,
       modeWhenAccessGroupsOff: 'configured',
-      commandOwnerAllowFrom: params.configuredAllowFrom,
+      commandOwnerAllowFrom,
       groupOwnerAllowFrom: 'configured',
       directGroupAllowFrom: 'none',
     },

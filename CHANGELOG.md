@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.10.9 — 2026-10-25（contracts.tools 声明 + 命令 owner 授权修复）
+
+**变更：**
+
+- **manifest 声明 contracts.tools（Issue #2）**：`openclaw.plugin.json` 顶层新增 `contracts.tools`（39 个 `feishu_*` 工具，与代码 `registerTool` 逐一对应，含 doc 系列 `fetch/create/update` 与 `ask_user_question`）。OpenClaw 10.x 主机要求插件在注册 agent 工具前声明 `contracts.tools`，此前缺失导致 10.x 主机拒绝工具注册；本版本补齐后，已真机验证重启 0 条注册拒绝警告。
+- **命令 owner 授权修复（Issue #1）**：`src/messaging/inbound/command-auth-compat.ts` 的 10.x ingress 路径原将 `commandOwnerAllowFrom` 仅设为账号级 `allowFrom`；当账号未显式配置 `allowFrom`（`dmPolicy=pairing`）而发送者已列入全局 `commands.ownerAllowFrom` 时，主人系统命令被静默拒绝（`delivered=false`）。修复：命令 owner 白名单改为「账号级 allowFrom ∪ 全局 `commands.ownerAllowFrom`（按 `feishu:` 前缀归一化为纯 senderId）」，paired owner 未配 allowFrom 时命令可正常授权。
+- `package.json`：版本号 `2026.10.8 → 2026.10.9`。
+
 ## 2026.10.8 — 2026-10-19（npm 10.7 渠道修复重发 · 三渠道统一）
 
 **背景与变更：**
