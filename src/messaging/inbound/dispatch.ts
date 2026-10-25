@@ -250,7 +250,7 @@ async function dispatchNormalMessage(
   }
 
   const effectiveSessionKey = dc.threadSessionKey ?? dc.route.sessionKey;
-  const toolUseDisplay = resolveToolUseDisplayConfig({
+  const toolUseDisplay = await resolveToolUseDisplayConfig({
     cfg: dc.accountScopedCfg,
     feishuCfg: dc.account.config,
     agentId: dc.route.agentId,

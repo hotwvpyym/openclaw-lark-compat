@@ -36,8 +36,10 @@ export interface ResolveSenderCommandAuthorizationCompatParams {
   senderId: string;
   isSenderAllowed: (senderId: string, allowFrom: string[]) => boolean;
   readAllowFromStore: () => Promise<string[]>;
-  /** Chat id of the inbound message (used as the ingress channel id). */
+  /** Channel id of the inbound message (the channel identifier, e.g. "feishu"). */
   channelId: string;
+  /** Conversation/chat id of the inbound message (kept separate from channelId). */
+  conversationId?: string;
   /** Account id scoped to this channel instance. */
   accountId: string;
   shouldComputeCommandAuthorized: (rawBody: string, cfg: OpenClawConfig) => boolean;
@@ -154,7 +156,7 @@ async function resolveCommandAuthorizationViaIngress(
       authentication: 'verified',
     }),
     subject: { stableId: params.senderId },
-    conversation: { kind: params.isGroup ? 'group' : 'direct', id: params.channelId },
+    conversation: { kind: params.isGroup ? 'group' : 'direct', id: params.conversationId ?? params.channelId },
     event: { kind: 'message', authMode: 'inbound', mayPair: false },
     policy: {
       dmPolicy: params.dmPolicy as 'open' | 'pairing' | 'allowlist' | 'disabled',

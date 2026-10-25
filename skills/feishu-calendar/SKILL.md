@@ -8,7 +8,7 @@ description: |
 
 ## 🚨 执行前必读
 
-- ✅ **时区固定**：Asia/Shanghai（UTC+8）
+- ✅ **时区**：默认 Asia/Shanghai（UTC+8），**优先以用户/会话所在时区为准**；其他时区用户按实际时区换算，所有时间均带时区偏移（如 +08:00）
 - ✅ **时间格式**：ISO 8601 / RFC 3339（带时区），例如 `2026-02-25T14:00:00+08:00`
 - ✅ **create 最小必填**：summary, start_time, end_time
 - ✅ **user_open_id 强烈建议**：从 SenderId 获取（ou_xxx），确保用户能看到日程

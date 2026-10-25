@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026.10.10 — 2026-10-26（安全审计 8 项修复 + 命令拒绝提示 + channelId 分离 + 内部材料出库）
+
+**变更：**
+
+- **ClawHub 安全审计 8 项 Medium 全部修复（skills 文案层，不影响插件功能）**：
+  - 触发词限定（3 项）：`feishu-im-read` / `feishu-bitable` / `feishu-task` 的 Skill 触发词限定为「意图明确为飞书场景」，避免无飞书上下文时被误触发；
+  - 输出处理（5 项）：bitable 附件上传与 examples.md 上传示例新增外发隐私警告；im-read 资源下载改为「仅在用户明确需要或任务必要时」才拉取，避免自动下载私有内容；bitable 批量删除补充「不可恢复、执行前核对仅含空行」警告；calendar 时区由「固定 Asia/Shanghai」改为「默认 Asia/Shanghai，优先以用户/会话所在时区为准」。
+- **命令拒绝原因提示（Issue #1 报告者建议 1）**：命令授权被拒（`commandAuthorized=false`）时，不再静默结束（`delivered=false`），向发送者回复明确的拒绝原因（需在账号 `allowFrom` 或全局 `commands.ownerAllowFrom` 中授权）。
+- **channelId 与 conversation.id 分离（Issue #1 报告者建议 3）**：10.x ingress 授权路径中，`channelId` 固定为通道标识 `feishu`，真实聊天标识改传 `conversation.id`（`conversationId` 参数），不再混用。
+- **session-store 读取迁移收敛**：`src/card/tool-use-config.ts` 的 SDK 同步兜底 `getSessionEntry`（2026-12-31 退役）改走 `getSessionEntryCompat` 双路径兼容层（10.4+ 异步 / ≤10.3 同步）；直读失败单独捕获后继续走兼容层兜底，不吞回退路径。
+- **内部材料出库**：`reports/auth-consistency/` 与 `reports/compat-analysis/`（内部审计材料）解除 git 跟踪并加入 `.gitignore`，不再随公开仓库外发。
+- `package.json`：版本号 `2026.10.9 → 2026.10.10`。
+
 ## 2026.10.9 — 2026-10-25（contracts.tools 声明 + 命令 owner 授权修复）
 
 **变更：**

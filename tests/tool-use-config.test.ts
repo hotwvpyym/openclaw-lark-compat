@@ -5,6 +5,7 @@ const sessions = new Map<string, Record<string, unknown>>();
 vi.mock('openclaw/plugin-sdk/session-store-runtime', () => ({
   resolveStorePath: (store?: string) => store ?? '/tmp/sessions',
   getSessionEntry: ({ sessionKey }: { sessionKey: string }) => sessions.get(sessionKey),
+  getSessionEntryAsync: undefined,
 }));
 
 const { resolveToolUseDisplayConfig } = await import('../src/card/tool-use-config');
@@ -14,10 +15,10 @@ beforeEach(() => {
 });
 
 describe('resolveToolUseDisplayConfig', () => {
-  it('uses session verbose override from the session store', () => {
+  it('uses session verbose override from the session store', async () => {
     sessions.set('agent:main:feishu:dm:user-1', { sessionId: 's1', updatedAt: 1, verboseLevel: 'full' });
 
-    const config = resolveToolUseDisplayConfig({
+    const config = await resolveToolUseDisplayConfig({
       cfg: { agents: { defaults: { verboseDefault: 'off' } } } as never,
       feishuCfg: { toolUseDisplay: { showFullPaths: true } } as never,
       agentId: 'main',
@@ -31,10 +32,10 @@ describe('resolveToolUseDisplayConfig', () => {
     expect(config.showFullPaths).toBe(true);
   });
 
-  it('lets inline /verbose override the stored session level for this message', () => {
+  it('lets inline /verbose override the stored session level for this message', async () => {
     sessions.set('agent:main:feishu:dm:user-1', { sessionId: 's1', updatedAt: 1, verboseLevel: 'off' });
 
-    const config = resolveToolUseDisplayConfig({
+    const config = await resolveToolUseDisplayConfig({
       cfg: { agents: { defaults: { verboseDefault: 'off' } } } as never,
       feishuCfg: {} as never,
       agentId: 'main',
@@ -46,8 +47,8 @@ describe('resolveToolUseDisplayConfig', () => {
     expect(config.showToolUse).toBe(true);
   });
 
-  it('falls back to agents.defaults.verboseDefault when no override exists', () => {
-    const config = resolveToolUseDisplayConfig({
+  it('falls back to agents.defaults.verboseDefault when no override exists', async () => {
+    const config = await resolveToolUseDisplayConfig({
       cfg: { agents: { defaults: { verboseDefault: 'on' } } } as never,
       feishuCfg: {} as never,
       agentId: 'main',
@@ -60,8 +61,8 @@ describe('resolveToolUseDisplayConfig', () => {
     expect(config.showToolResultDetails).toBe(false);
   });
 
-  it('defaults to off when no inline, session, or config value is present', () => {
-    const config = resolveToolUseDisplayConfig({
+  it('defaults to off when no inline, session, or config value is present', async () => {
+    const config = await resolveToolUseDisplayConfig({
       cfg: {} as never,
       feishuCfg: {} as never,
       agentId: 'main',
@@ -73,10 +74,10 @@ describe('resolveToolUseDisplayConfig', () => {
     expect(config.showToolUse).toBe(false);
   });
 
-  it('falls back to the default-agent session key for non-default agents', () => {
+  it('falls back to the default-agent session key for non-default agents', async () => {
     sessions.set('agent:main:feishu:dm:user-1', { sessionId: 's1', updatedAt: 1, verboseLevel: 'full' });
 
-    const config = resolveToolUseDisplayConfig({
+    const config = await resolveToolUseDisplayConfig({
       cfg: { agents: { defaults: { verboseDefault: 'off' } } } as never,
       feishuCfg: {} as never,
       agentId: 'hr',

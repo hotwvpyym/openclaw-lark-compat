@@ -93,7 +93,7 @@ export async function getSessionEntryCompat(params: {
     getSessionEntryAsync?: (p: unknown) => Promise<unknown>;
     getSessionEntry: (p: unknown) => unknown;
   };
-  if (typeof runtime.getSessionEntryAsync === 'function') {
+  if ('getSessionEntryAsync' in runtime && typeof runtime.getSessionEntryAsync === 'function') {
     return (await runtime.getSessionEntryAsync(params)) as Record<string, unknown> | undefined;
   }
   return runtime.getSessionEntry(params) as Record<string, unknown> | undefined;
