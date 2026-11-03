@@ -24,15 +24,15 @@
 | 与新版 OpenClaw 不兼容 | 官方 2026.7.16 版无法安装/正常运行在 OpenClaw **2026.9.x 及以上**（插件 SDK API 已变化）；**2026.10.x 起官方移除了 `openclaw/plugin-sdk/command-auth` 子路径**，官方 7.16 的静态 import 会在插件注册前加载失败 |
 | 官方新线门槛更高 | 官方替代插件 `@openclaw/feishu` 要求 OpenClaw **≥2026.9.8**，无法用于 9.7 及以下版本，且该插件**不提供卡片用量页脚（footer metrics）** |
 
-### 本版本修复的核心问题（OpenClaw 2026.10.7 生产实测验证）
+### 本版本修复的核心问题（OpenClaw 2026.10.10 生产实测验证）
 
 本社区版持续修复官方版在 OpenClaw 新版上的兼容性问题，**完整功能、完整配置、完整页脚指标**：
 
-- **卡片页脚指标完整恢复**：`tokens / cache / context / model / 耗时 / 状态` 六项全部可用（官方版升级后仅剩状态与耗时）；
-- **OpenClaw 10.x 全线兼容**：官方移除的 `command-auth` 子路径由内置双路径兼容层接管（9.x 走 legacy、10.x 走 `channel-ingress-runtime`），命令授权行为与 OpenClaw 10.x 主机其他渠道一致；
-- **manifest 契约完整声明**：`contracts.tools` 等字段随 OpenClaw 校验演进同步补齐，agent 工具注册不再被 10.x 主机拒绝；
-- **命令授权修复**：已配对主人未显式配置 `allowFrom` 时，系统命令不再被静默丢弃；
-- **配置校验兼容**：`configSchema` 与源码同步，OpenClaw 10.x 严格校验下页脚六项等配置正常生效。
+- **OpenClaw 8.1–10.x 全线兼容**：官方移除的 `command-auth` 子路径由内置双路径兼容层接管（9.x 走 legacy、10.x 走 `channel-ingress-runtime`），命令授权行为与 OpenClaw 10.x 主机其他渠道一致；
+- **卡片页脚六项完整可用**：`状态 / 耗时 / Token 使用量 / 缓存命中 / 上下文占用 / 模型` 全部可独立开关（官方版升级后仅剩状态与耗时）；
+- **manifest 契约合规**：`contracts.tools` 完整声明 39 个 `feishu_*` 工具，与代码注册逐一对应，agent 工具注册不再被 10.x 主机拒绝；
+- **命令授权透明**：已配对主人未显式配置 `allowFrom` 时，系统命令给出明确拒绝原因而非静默丢弃；`channelId` 与 `conversationId` 分离，命令归属不再混淆；
+- **安全与维护**：随 ClawHub 安全审计修复 8 项文案问题（触发词收敛、附件外发/批量删除/时区等警告补全）；`reports/` 等内部材料不入发布包。
 
 > 每个版本的详细变更（修复内容、根因、权威包 sha256）见 [GitHub Releases](https://github.com/hotwvpyym/openclaw-lark-compat/releases) 与仓库 [CHANGELOG](./CHANGELOG.md)。
 
@@ -60,9 +60,9 @@
 
 ## 二、兼容版本（Compatibility）
 
-兼容 OpenClaw **2026.8.1 及以上所有稳定版**（当前最新验证版本：**2026.10.7**，生产实测；仅维护稳定版，beta 不在支持范围）。
+兼容 OpenClaw **2026.8.1 及以上所有稳定版**（当前最新验证版本：**2026.10.10**，官方 stable 生产实测；仅维护稳定版，beta 不在支持范围）。
 
-已实测：`2026.8.1 / 2026.8.35 / 2026.9.6 / 2026.9.7（生产实测）/ 2026.9.8 / 2026.10.3 / 2026.10.5 / 2026.10.7（生产实测）`——typecheck 全 0 错误，生产服务器全功能实测通过（消息收发 / 插件加载 / 页脚六项 / 工具注册）。
+已实测：`2026.8.1 / 2026.8.35 / 2026.9.6 / 2026.9.7（生产实测）/ 2026.9.8 / 2026.10.3 / 2026.10.5 / 2026.10.7（生产实测）/ 2026.10.10（官方 stable，生产实测）`——typecheck 全 0 错误，生产服务器全功能实测通过（消息收发 / 插件加载 / 页脚六项 / 工具注册）。
 
 架构说明：OpenClaw 8.x / 9.6 使用 `sessions.json` 会话存储，9.7+ 使用 per-agent SQLite；OpenClaw 10.4+ 将会话主表迁移为 `session_nodes`——插件对两种 schema 均兼容（直读 SQL 双路径探测表名，不可用时自动回退 SDK 读取）。
 
@@ -80,12 +80,12 @@
 **方式 A：本地 tgz 安装（推荐，最可控）**
 
 ```bash
-openclaw plugins install npm-pack:/path/to/hotwvpyym-openclaw-lark-2026.10.10.tgz --force --accept-capabilities
+openclaw plugins install npm-pack:/path/to/hotwvpyym-openclaw-lark-2026.10.11.tgz --force --accept-capabilities
 ```
 
 **方式 B：从 GitHub Release 下载**
 
-在 [Releases](../../releases) 页面下载 `hotwvpyym-openclaw-lark-2026.10.10.tgz`，然后按方式 A 安装。
+在 [Releases](../../releases) 页面下载 `hotwvpyym-openclaw-lark-2026.10.11.tgz`，然后按方式 A 安装。
 
 **方式 C：ClawHub / npm（发布后可用）**
 
@@ -97,7 +97,7 @@ openclaw plugins install npm:@hotwvpyym/openclaw-lark  # npm
 安装完成后确认：
 
 ```bash
-openclaw plugins list        # 应看到 openclaw-lark，版本 2026.10.10
+openclaw plugins list        # 应看到 openclaw-lark，版本 2026.10.11
 openclaw gateway restart     # 若安装过程提示 drain 超时，用此命令兜底
 ```
 
@@ -162,9 +162,11 @@ openclaw config set channels.feishu.footer.model true     # 模型
 
 每个版本的详细更新说明（修复内容、发布原因、权威包 sha256）请查看 [GitHub Releases](https://github.com/hotwvpyym/openclaw-lark-compat/releases)。
 
-当前版本：**2026.10.10**（兼容 OpenClaw 2026.8.1 – 2026.10.7 stable；三渠道同源发布：npm / GitHub Release / ClawHub，包内容逐字节一致）。
+当前版本：**2026.10.11**（兼容 OpenClaw 2026.8.1 – 2026.10.10 stable；三渠道同源发布：npm / GitHub Release / ClawHub，包内容逐字节一致）。
 
 > **2026.10.10 主要变更**：manifest 补齐 `contracts.tools` 声明（39 个 `feishu_*` 工具，与代码注册逐一对应，10.x 主机工具注册不再被拒）；修复 10.x 命令授权——已配对主人未显式配置 `allowFrom` 时，系统命令不再静默失败（`delivered=false`）。完整变更见 Releases。
+
+> **2026.10.11 主要变更**：README 双语章节精简同步（第一章并入 10.10 内容、兼容版本更新至官方 2026.10.10 stable）；修复 `feishu-bitable` 记录值文档附件段隐私警告缺失（ClawHub Finding 4/5）；`reports/hot-reload` 内部材料出库不再入远端仓库；getSessionEntry 同步 API 退役决策记录（兼容 8.1–10.3 需保留同步回退，官方 2026-12-31 退役前无影响）。完整变更见 Releases。
 
 ---
 

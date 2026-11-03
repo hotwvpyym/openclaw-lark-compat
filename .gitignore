@@ -5,6 +5,8 @@ dist/
 .DS_Store
 # clawhub validate 临时校验报告仅忽略 plugin-inspector-*；
 # auth-consistency/ 与 compat-analysis/ 为内部审计材料，不随公开仓库外发（10.10 起解除跟踪）
+# hot-reload/ 为内部热重载审计材料（10.11 起解除跟踪）
 reports/plugin-inspector-*
 reports/auth-consistency/
 reports/compat-analysis/
+reports/hot-reload/
