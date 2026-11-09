@@ -61,7 +61,7 @@ const CARD_TEXTS = {
     expiresHint: (min: number) =>
       `<font color='grey'>This link will time out in ${min} minutes, so you'll need a new one if it expires.</font>`,
     batchAuthHint:
-      "<font color='grey'>💡 If you'd like to grant all permissions at once, just say \"Authorize all\", and I'll take care of it.</font>",
+      "<font color='grey'>💡 You can authorize scopes as needed, or grant all app-required scopes in one go.</font>",
 
     batchScopeMsg: (count: number, total: number, granted: number) =>
       `The app requires ${count} additional user token permissions (${granted} of ${total} granted).`,

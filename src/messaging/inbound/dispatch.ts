@@ -145,7 +145,6 @@ async function dispatchSyntheticMessage(
 ): Promise<void> {
   const effectiveSessionKey = dc.threadSessionKey ?? dc.route.sessionKey;
   const isVcSynthetic = dc.ctx.chatId === SYNTHETIC_VC_CHAT_ID;
-  let deliveredFinalToSender = false;
   dc.log(
     `feishu[${dc.account.accountId}]: dispatching synthetic reply (session=${effectiveSessionKey}, target=${dc.ctx.chatId})`,
   );
@@ -159,33 +158,16 @@ async function dispatchSyntheticMessage(
         const text = payload.text?.trim() ?? '';
         const preview = text.slice(0, 120);
 
-        // VC invited flows intentionally keep the synthetic target to avoid
-        // leaking intermediate tool output to IM, but the final business
-        // result should be explicitly notified to the inviter.
-        //
-        // Important: this DM is only a transport bridge for the final text.
-        // It does not rebind the inviter's DM conversation to the synthetic
-        // meeting-scoped session; later DM replies will still be routed by the
-        // normal OpenClaw DM session rules.
-        if (isVcSynthetic && info.kind === 'final' && text && text !== 'NO_REPLY' && !deliveredFinalToSender) {
-          deliveredFinalToSender = true;
-          try {
-            await sendMessageFeishu({
-              cfg: dc.accountScopedCfg,
-              to: dc.ctx.senderId,
-              text,
-              accountId: dc.account.accountId,
-            });
-            dc.log(
-              `feishu[${dc.account.accountId}]: synthetic VC final delivered explicitly to sender=${dc.ctx.senderId}, preview="${preview}"`,
-            );
-            return;
-          } catch (err) {
-            deliveredFinalToSender = false;
-            dc.error(
-              `feishu[${dc.account.accountId}]: synthetic VC final delivery failed to sender=${dc.ctx.senderId}: ${String(err)}`,
-            );
-          }
+        // Synthetic VC flows keep the synthetic target for all payloads
+        // (including the final business result): intermediate tool output
+        // must not leak to IM, and per 10.12 audit hardening the final
+        // payload is also dropped instead of being DM-ed back to the
+        // inviter (no implicit IM side effects from a meeting-scoped session).
+        if (isVcSynthetic && info.kind === 'final' && text) {
+          dc.log(
+            `feishu[${dc.account.accountId}]: synthetic VC final payload dropped (no IM chat, target=${dc.ctx.chatId}, preview="${preview}")`,
+          );
+          return;
         }
 
         if (info.kind === 'final') {

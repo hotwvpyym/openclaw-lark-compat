@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.10.12 — 2026-11-09（ClawHub Security Audit 9 组修复：权限默认值收敛 + 身份描述对齐 + VC 副作用消除）
+
+**变更：**
+
+- **新建日程参会人默认权限收敛（审计 High）**：`src/tools/oapi/calendar/event.ts` 新建日程的 `attendee_ability` 默认值由 `can_modify_event` 改为 `none`，与工具 schema 描述一致；需参会人可编辑日程时须显式传 `can_modify_event`。`skills/feishu-calendar/SKILL.md` 参会人权限说明同步更新。
+- **云文档评论工具身份描述对齐（审计 High）**：`src/tools/oapi/drive/doc-comments.ts` 工具描述由「以用户身份」更正为「以应用身份」（评论操作实际使用应用凭据 `as: 'tenant'`，访问范围限于应用可见的文档），描述与实现一致。
+- **Synthetic VC final 不再回发 DM（审计 Medium）**：`src/messaging/inbound/dispatch.ts` 移除「VC 合成会话 final 结果显式 DM 邀请人」的发送块，final 载荷一律丢弃并记录日志，消除会议场景对邀请人的隐式 IM 副作用；`tests/vc-synthetic-notify.test.ts` 断言同步为不发送。
+- **MCP 启动依赖 pin 版本（审计 Medium）**：`bin/openclaw-lark.js` 默认 `@larksuiteoapi/openclaw-lark-tools` 由最新浮动改为 pin `1.0.47`（当前发布版），避免 npx 拉取未经验证的新版本。
+- **bitable 文档警告补全（审计 Missing User Warnings）**：`skills/feishu-bitable/references/examples.md` `batch_delete` 两处补「删除不可恢复」警告；客户/外部数据导入场景补隐私提示（确认数据来源与表格归属后再写入）。
+- **授权提示按需化（审计措辞）**：`src/tools/auto-auth.ts` / `src/tools/oauth-cards.ts` 授权卡片文案由「申请所有权限」改为「按需完成应用所需授权」，保留「授予所有用户权限」作为一次性授权的可选项。
+- `package.json`：版本号 `2026.10.11 → 2026.10.12`；README 双语同步（版本号 / tgz 文件名 / 最新验证版本 2026.10.10）。
+
 ## 2026.10.11 — 2026-11-04（README 双语同步 + 附件隐私警告补全 + 内部材料出库收尾）
 
 **变更：**

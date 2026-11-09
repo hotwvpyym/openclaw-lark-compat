@@ -5,9 +5,11 @@ import { dirname, join } from 'node:path';
 const mod = ['child', 'process'].join('_');
 const { execFileSync } = createRequire(import.meta.url)(`node:${mod}`);
 
-// --tools-version <ver> lets the user pin a specific version
+// --tools-version <ver> lets the user pin a specific version.
+// Default is pinned to a verified tool-package release (supply-chain guard):
+// npx resolves @larksuite/openclaw-lark-tools@<version>, never @latest.
 const args = process.argv.slice(2);
-let version = 'latest';
+let version = '1.0.47';
 
 const vIdx = args.indexOf('--tools-version');
 if (vIdx !== -1) {

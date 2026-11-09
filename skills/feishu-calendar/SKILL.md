@@ -49,7 +49,7 @@ description: |
 
 ### 2. 参会人权限（attendee_ability）
 
-工具已默认设置 `attendee_ability: "can_modify_event"`，参会人可以编辑日程和管理参与者。
+参会人权限默认 `none`（无权限），由用户在创建日程/邀请参会人时**显式指定**：`can_see_others`（可查看参与人列表）、`can_invite_others`（可邀请他人）、`can_modify_event`（可编辑日程）。
 
 | 权限值 | 能力 |
 |--------|------|
@@ -169,7 +169,7 @@ description: |
 | 错误现象 | 根本原因 | 解决方案 |
 |---------|---------|---------|
 | **发起人不在参会人列表中** | 未传 `user_open_id` | 强烈建议传 `user_open_id = SenderId` |
-| **参会人看不到其他参会人** | `attendee_ability` 权限不足 | 工具已默认设置 `can_modify_event` |
+| **参会人看不到其他参会人** | `attendee_ability` 权限不足 | 创建日程时显式指定 `can_see_others` 以上权限 |
 | **时间不对** | 使用了 Unix 时间戳 | 改用 ISO 8601 格式（带时区）：`2024-01-01T00:00:00+08:00` |
 | **会议室显示"预约中"** | 会议室预约是异步的 | 等待几秒后用 `list` 查询 `rsvp_status` |
 | **修改日程报权限错误** | 当前用户不是组织者，且日程未设置可编辑权限 | 确保日程创建时设置了 `attendee_ability: "can_modify_event"` |

@@ -205,6 +205,8 @@
 }
 ```
 
+**⚠️ 注意**: `batch_delete` **删除不可恢复**。执行前必须核对 `records` 列表仅包含待清理的空行（先按空文本字段筛选确认），不得误删有数据行。
+
 ---
 
 #### 步骤 7: 批量插入数据（工具: `feishu_bitable_app_table_record`）
@@ -305,6 +307,8 @@
 
 **工具**: `feishu_bitable_app_table_record`
 
+> ⚠️ **隐私提示**：本示例中的客户名称、联系电话、负责人、签约金额等个人与商业信息将写入飞书多维表格（数据会传输至飞书服务器）。导入前请确认：① 目标表格归属与可见范围（避免误写入他人/共享表格）；② 数据合规（如需，先获得相关方同意）。
+
 ```json
 {
   "action": "batch_create",
@@ -382,7 +386,7 @@
 **核心步骤**:
 1. 创建 App → 获取 `app_token` 和 `default_table_id`
 2. 查看默认表记录 (`list` action)
-3. 删除空行 (`batch_delete` action)
+3. 删除空行 (`batch_delete` action) — ⚠️ **删除不可恢复**，执行前确认待删 record_id 均为空行
 4. 批量插入数据 (`batch_create` action)
 
 **错误示例**（跳过步骤 2-3）:

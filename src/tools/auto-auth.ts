@@ -498,10 +498,10 @@ function buildAppScopeMissingCard(params: {
         { tag: 'hr' },
         {
           tag: 'markdown',
-          content: '**Step 1: Request all permissions**',
+          content: '**Step 1: Complete the required authorizations**',
           i18n_content: {
-            zh_cn: '**第一步：申请所有权限**',
-            en_us: '**Step 1: Request all permissions**',
+            zh_cn: '**第一步：按需完成应用所需授权**',
+            en_us: '**Step 1: Complete the required authorizations**',
           },
           text_size: 'normal',
         },

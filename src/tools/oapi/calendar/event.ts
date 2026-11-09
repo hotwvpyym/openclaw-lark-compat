@@ -562,7 +562,7 @@ export function registerFeishuCalendarEventTool(api: OpenClawPluginApi): void {
                 start_time: { timestamp: startTs },
                 end_time: { timestamp: endTs },
                 need_notification: true,
-                attendee_ability: p.attendee_ability ?? 'can_modify_event',
+                attendee_ability: p.attendee_ability ?? 'none',
               };
               if (p.description) eventData.description = p.description;
 

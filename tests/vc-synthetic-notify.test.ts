@@ -104,7 +104,7 @@ beforeEach(() => {
 })
 
 describe('dispatchToAgent synthetic VC notification', () => {
-  it('delivers the final VC synthetic reply explicitly to the inviter', async () => {
+  it('drops the final VC synthetic payload without DM-ing the inviter', async () => {
     dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(async (params: {
       dispatcherOptions: {
         deliver: (
@@ -137,13 +137,6 @@ describe('dispatchToAgent synthetic VC notification', () => {
       runtime: { log: vi.fn(), error: vi.fn(), exit: vi.fn() } as never,
     })
 
-    expect(sendMessageFeishuMock).toHaveBeenCalledTimes(1)
-    expect(sendMessageFeishuMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: 'ou_inviter_1',
-        text: '已成功入会',
-        accountId: 'default',
-      }),
-    )
+    expect(sendMessageFeishuMock).not.toHaveBeenCalled()
   })
 })

@@ -219,7 +219,7 @@ export function registerDocCommentsTool(api: OpenClawPluginApi): boolean {
       name: 'feishu_doc_comments',
       label: 'Feishu: Doc Comments',
       description:
-        '【以用户身份】管理云文档评论。支持: ' +
+        '【以应用身份】管理云文档评论（评论操作使用应用凭据，访问范围限于应用可见的文档）。支持: ' +
         '(1) list - 获取评论列表(含完整回复); ' +
         '(2) list_replies - 获取指定评论的回复列表; ' +
         '(3) create - 添加全文评论(支持文本、@用户、超链接); ' +
