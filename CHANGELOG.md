@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.10.13 — 2026-11-10（ClawHub 10.12 重扫唯一 Warning 修复：远程媒体下载重定向 SSRF 收紧）
+
+- `src/messaging/outbound/media.ts`：远程媒体下载改为手动处理重定向（`redirect: "manual"`），每个跳转目标在连接前重新执行 SSRF 校验，最多 5 跳——修复 ClawHub 审计 Warning「Remote Media Downloads Follow Redirects Without Revalidating Destinations」。
+- `src/messaging/outbound/media.ts`：地址黑名单补全——IPv4-mapped IPv6（`::ffff:10.x.x.x` 形式解包）与 CGNAT 段 `100.64.0.0/10` 纳入私有/保留地址拒绝范围。
+- `src/messaging/outbound/media.ts`：DNS 解析失败由 warn 放行改为直接拒绝（fail closed，防歧义解析/rebinding，错误附 cause）。
+- `package.json`：`undici-types` 从 dependencies 移至 devDependencies（纯类型包，构建期类型导入，不随包安装）；版本号 `2026.10.12 → 2026.10.13`。
+
 ## 2026.10.12 — 2026-11-09（ClawHub Security Audit 9 组修复：权限默认值收敛 + 身份描述对齐 + VC 副作用消除）
 
 **变更：**

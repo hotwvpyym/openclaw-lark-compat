@@ -929,17 +929,24 @@ export async function fetchRemoteImageBuffer(url: string): Promise<Buffer> {
  * Check whether an IP address belongs to a private or reserved range.
  *
  * Blocks: 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
- * 169.254.0.0/16 (link-local / cloud metadata), 0.0.0.0,
- * IPv6 loopback (::1), link-local (fe80::), ULA (fc/fd).
+ * 169.254.0.0/16 (link-local / cloud metadata), 100.64.0.0/10 (CGNAT),
+ * 0.0.0.0, IPv4-mapped IPv6 (::ffff:a.b.c.d), IPv6 loopback (::1),
+ * link-local (fe80::), ULA (fc/fd).
  */
 function isPrivateIP(ip: string): boolean {
+  // Unwrap IPv4-mapped IPv6 forms (e.g. ::ffff:10.1.2.3) before IPv4 checks.
+  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const v4 = mapped ? mapped[1] : ip;
+
   // IPv4 private / reserved ranges
-  if (ip.startsWith('127.')) return true;
-  if (ip.startsWith('10.')) return true;
-  if (ip.startsWith('192.168.')) return true;
-  if (ip.startsWith('169.254.')) return true;
-  if (ip === '0.0.0.0') return true;
-  if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(ip)) return true;
+  if (v4.startsWith('127.')) return true;
+  if (v4.startsWith('10.')) return true;
+  if (v4.startsWith('192.168.')) return true;
+  if (v4.startsWith('169.254.')) return true;
+  if (v4 === '0.0.0.0') return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(v4)) return true;
+  // CGNAT carrier-grade NAT range 100.64.0.0/10
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v4)) return true;
 
   // IPv6 private / reserved ranges
   if (ip === '::1' || ip === '::') return true;
@@ -989,9 +996,14 @@ async function validateRemoteUrl(raw: string): Promise<void> {
       if (err instanceof Error && err.message.includes('SSRF protection')) {
         throw err;
       }
-      // DNS failure is logged but not blocking — the subsequent fetch will
-      // produce a clear network error if the host is truly unreachable.
-      log.warn(`[feishu-media] DNS resolution failed for "${hostname}": ${err}`);
+      // Fail closed: DNS resolution failure is ambiguous (could be a rebinding
+      // or a flaky resolver hiding an internal target) — refuse instead of
+      // letting fetch follow its own resolution.
+      throw new Error(
+        `[feishu-media] DNS resolution failed for "${hostname}": ${err}. ` +
+          `Refusing to fetch (SSRF protection: ambiguous resolution is rejected).`,
+        { cause: err },
+      );
     }
   }
 }
@@ -1037,22 +1049,49 @@ async function fetchMediaBuffer(urlOrPath: string, localRoots?: readonly string[
   await validateRemoteUrl(raw);
 
   const FETCH_TIMEOUT_MS = 30_000;
+  /** Max redirect hops — each hop is re-validated before connecting. */
+  const MAX_MEDIA_REDIRECTS = 5;
   log.info(`fetching remote media: ${raw}`);
 
-  // Retry transient server errors (502/503/504) with bounded backoff.
   const arrayBuffer = await withRetry(async () => {
-    const response = await fetch(raw, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-    if (!response.ok) {
-      // Attach status so withRetry can inspect it.
-      const err: Error & { status?: number } = new Error(
-        `[feishu-media] Failed to fetch media from "${raw}": ` +
-          `HTTP ${response.status} ${response.statusText}. ` +
-          `Verify the URL is accessible and returns a valid media resource.`,
-      );
-      err.status = response.status;
-      throw err;
+    let currentUrl = raw;
+    for (let hop = 0; hop <= MAX_MEDIA_REDIRECTS; hop++) {
+      // Manual redirect handling: never let the HTTP client follow Location
+      // headers on its own — every destination must pass SSRF validation first.
+      const response = await fetch(currentUrl, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+
+      const location = response.headers.get('location');
+      if (response.status >= 300 && response.status < 400 && location) {
+        if (hop >= MAX_MEDIA_REDIRECTS) {
+          throw new Error(
+            `[feishu-media] Too many redirects (>${MAX_MEDIA_REDIRECTS}) while fetching "${raw}".`,
+          );
+        }
+        const nextUrl = new URL(location, currentUrl).toString();
+        log.debug(`redirect hop ${hop + 1}: ${currentUrl} -> ${nextUrl}`);
+        // Re-validate every redirect target (blocks public -> private jumps).
+        await validateRemoteUrl(nextUrl);
+        currentUrl = nextUrl;
+        continue;
+      }
+
+      if (!response.ok) {
+        // Attach status so withRetry can inspect it.
+        const err: Error & { status?: number } = new Error(
+          `[feishu-media] Failed to fetch media from "${currentUrl}": ` +
+            `HTTP ${response.status} ${response.statusText}. ` +
+            `Verify the URL is accessible and returns a valid media resource.`,
+        );
+        err.status = response.status;
+        throw err;
+      }
+      return response.arrayBuffer();
     }
-    return response.arrayBuffer();
+    // Unreachable (loop guard above always throws or returns), but keep TS happy.
+    throw new Error(`[feishu-media] Unreachable state while fetching "${raw}".`);
   }, `fetchMedia(${raw})`);
 
   log.debug(`remote media fetched: ${raw}, ${arrayBuffer.byteLength} bytes`);

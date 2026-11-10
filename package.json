@@ -1,6 +1,6 @@
 {
   "name": "@hotwvpyym/openclaw-lark",
-  "version": "2026.10.12",
+  "version": "2026.10.13",
   "description": "OpenClaw Lark/Feishu channel plugin",
   "type": "module",
   "exports": {
@@ -44,7 +44,6 @@
     "@larksuiteoapi/node-sdk": "^1.64.0",
     "@sinclair/typebox": "0.34.49",
     "image-size": "^2.0.2",
-    "undici-types": "^8.1.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
@@ -71,7 +70,8 @@
     "tsdown": "^0.21.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.32.1",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "undici-types": "^8.1.0"
   },
   "openclaw": {
     "extensions": [

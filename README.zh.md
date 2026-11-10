@@ -32,7 +32,7 @@
 - **卡片页脚六项完整可用**：`状态 / 耗时 / Token 使用量 / 缓存命中 / 上下文占用 / 模型` 全部可独立开关（官方版升级后仅剩状态与耗时）；
 - **manifest 契约合规**：`contracts.tools` 完整声明 39 个 `feishu_*` 工具，与代码注册逐一对应，agent 工具注册不再被 10.x 主机拒绝；
 - **命令授权透明**：已配对主人未显式配置 `allowFrom` 时，系统命令给出明确拒绝原因而非静默丢弃；`channelId` 与 `conversationId` 分离，命令归属不再混淆；
-- **安全与维护**：随 ClawHub 安全审计持续修复（8 项文案 + 10.12 的 9 组真实问题：日历参会人权限默认收紧为 none、云文档评论身份声明如实化、VC 会议合成事件静默处理、MCP 工具包固定版本、批量删除/客户导入警告补全、授权文案弱化）；`reports/` 等内部材料不入发布包。
+- **安全与维护**：随 ClawHub 安全审计持续修复（8 项文案 + 10.12 的 9 组真实问题：日历参会人权限默认收紧为 none、云文档评论身份声明如实化、VC 会议合成事件静默处理、MCP 工具包固定版本、批量删除/客户导入警告补全、授权文案弱化；10.13 远程媒体下载重定向 SSRF 收紧）；`reports/` 等内部材料不入发布包。
 
 > 每个版本的详细变更（修复内容、根因、权威包 sha256）见 [GitHub Releases](https://github.com/hotwvpyym/openclaw-lark-compat/releases) 与仓库 [CHANGELOG](./CHANGELOG.md)。
 
@@ -80,12 +80,12 @@
 **方式 A：本地 tgz 安装（推荐，最可控）**
 
 ```bash
-openclaw plugins install npm-pack:/path/to/hotwvpyym-openclaw-lark-2026.10.12.tgz --force --accept-capabilities
+openclaw plugins install npm-pack:/path/to/hotwvpyym-openclaw-lark-2026.10.13.tgz --force --accept-capabilities
 ```
 
 **方式 B：从 GitHub Release 下载**
 
-在 [Releases](../../releases) 页面下载 `hotwvpyym-openclaw-lark-2026.10.12.tgz`，然后按方式 A 安装。
+在 [Releases](../../releases) 页面下载 `hotwvpyym-openclaw-lark-2026.10.13.tgz`，然后按方式 A 安装。
 
 **方式 C：ClawHub / npm（发布后可用）**
 
@@ -97,7 +97,7 @@ openclaw plugins install npm:@hotwvpyym/openclaw-lark  # npm
 安装完成后确认：
 
 ```bash
-openclaw plugins list        # 应看到 openclaw-lark，版本 2026.10.12
+openclaw plugins list        # 应看到 openclaw-lark，版本 2026.10.13
 openclaw gateway restart     # 若安装过程提示 drain 超时，用此命令兜底
 ```
 
@@ -162,13 +162,13 @@ openclaw config set channels.feishu.footer.model true     # 模型
 
 每个版本的详细更新说明（修复内容、发布原因、权威包 sha256）请查看 [GitHub Releases](https://github.com/hotwvpyym/openclaw-lark-compat/releases)。
 
-当前版本：**2026.10.12**（兼容 OpenClaw 2026.8.1 – 2026.10.10 stable；三渠道同源发布：npm / GitHub Release / ClawHub，包内容逐字节一致）。
+当前版本：**2026.10.13**（兼容 OpenClaw 2026.8.1 – 2026.11.2 stable；三渠道同源发布：npm / GitHub Release / ClawHub，包内容逐字节一致）。
 
 > **2026.10.10 主要变更**：manifest 补齐 `contracts.tools` 声明（39 个 `feishu_*` 工具，与代码注册逐一对应，10.x 主机工具注册不再被拒）；修复 10.x 命令授权——已配对主人未显式配置 `allowFrom` 时，系统命令不再静默失败（`delivered=false`）。完整变更见 Releases。
 
 > **2026.10.11 主要变更**：README 双语章节精简同步（第一章并入 10.10 内容、兼容版本更新至官方 2026.10.10 stable）；修复 `feishu-bitable` 记录值文档附件段隐私警告缺失（ClawHub Finding 4/5）；`reports/hot-reload` 内部材料出库不再入远端仓库；getSessionEntry 同步 API 退役决策记录（兼容 8.1–10.3 需保留同步回退，官方 2026-12-31 退役前无影响）。完整变更见 Releases。
 
-> **2026.10.12 主要变更**：ClawHub 安全审计（2026.10.11 重扫 49 findings）9 组真实问题修复——日历创建默认参会人权限 `can_modify_event` → `none`（与文档一致，参会人编辑日程需显式授权）；云文档评论工具描述由「以用户身份」更正为「以应用身份」（实际使用应用凭据，访问限于应用可见文档）；VC 会议合成事件不再回发 DM（与 side-effects-only 契约一致，静默处理、仅留日志）；`bin/openclaw-lark.js` 默认固定 `@larksuite/openclaw-lark-tools@1.0.47`（不再默认 @latest，`--tools-version` 仍可覆盖）；`examples.md` 批量删除补「不可恢复」警告、客户数据导入补隐私提示；授权引导文案由「申请所有权限」弱化为「按需授权」。完整变更见 Releases。
+> **2026.10.13 主要变更**：ClawHub 安全审计（2026.10.12 重扫唯一 Warning）修复——远程媒体下载改为手动处理重定向、每个跳转目标在连接前重新做 SSRF 校验（最多 5 跳），不再盲跟随到内网地址；私有地址黑名单补全 IPv4-mapped IPv6 与 CGNAT 段；DNS 解析失败改为直接拒绝。同时清理依赖卫生：纯类型包 undici-types 移出 runtime dependencies。完整变更见 Releases。
 
 ---
 
