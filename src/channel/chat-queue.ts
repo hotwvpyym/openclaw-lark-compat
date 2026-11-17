@@ -17,6 +17,8 @@ type QueueStatus = 'queued' | 'immediate';
 export interface ActiveDispatcherEntry {
   abortCard: () => Promise<void>;
   abortController?: AbortController;
+  /** open_id of the user who initiated this dispatcher; used to gate abort fast-path. */
+  initiatorOpenId?: string;
 }
 
 const chatQueues = new Map<string, Promise<void>>();

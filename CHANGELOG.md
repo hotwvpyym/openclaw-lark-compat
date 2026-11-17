@@ -1,3 +1,19 @@
+## 2026.10.14 — 2026-11-10（ClawHub 10.13 重扫 3 findings 根治：SSRF 真 pin + 内存上限 + abort 授权）
+
+- **SSRF 根治（Error）** `src/messaging/outbound/media.ts`：
+  - 字符串前缀判断替换为正经 CIDR 数值匹配（IPv4 32位整数 / IPv6 BigInt），覆盖 16 段 v4 保留 CIDR + 8 段 v6 保留 CIDR。
+  - `dns.lookup({ all:true, verbatim:true })` 同时解析并校验所有 A 与 AAAA 地址，任意一个命中黑名单即拒绝。
+  - **连接 pin（DNS rebinding 根治）**：校验通过后用 `node:https.request` 直连已批准 IP，TCP 不再走系统 resolver；TLS SNI 与 Host 头仍用原域名，证书校验与虚拟主机正常。
+  - 每跳重定向都重新执行「解析→校验→pin」，5 跳上限。
+- **远程媒体无界 buffer（MCP05 Warning）**：
+  - 25MB 硬上限：`Content-Length` 早拒；流式读取累计字节数超限立即 `req.destroy()`。
+  - 并发下载信号量上限 4，防突发下载打爆网关内存。
+- **abort fast-path 授权（MCP07 Warning）**：
+  - `ActiveDispatcherEntry` 增加 `initiatorOpenId`，dispatch 时记录发起者 open_id。
+  - 群聊中只有发起当前会话的用户发「停止」才触发 abort，其他群成员的同类消息走正常队列不再打断别人的运行；私聊（p2p）保持原行为。
+- `package.json`：版本号 `2026.10.13 → 2026.10.14`。本地验证：typecheck 0 / lint 0 err / tests 451/451 / clawhub validate PASS（0 findings）。
+- 真机验证：**通过**（OpenClaw 2026.11.2 与 2026.11.4 双环境实测，消息收发/卡片/媒体/abort 授权均正常；2026.11.4 兼容四重排查全绿：validate 0 breakages、29 符号类型+运行时面一致、弃用清单零交集）。
+
 # Changelog
 
 ## 2026.10.13 — 2026-11-10（ClawHub 10.12 重扫唯一 Warning 修复：远程媒体下载重定向 SSRF 收紧）

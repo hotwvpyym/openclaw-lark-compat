@@ -32,7 +32,7 @@
 - **卡片页脚六项完整可用**：`状态 / 耗时 / Token 使用量 / 缓存命中 / 上下文占用 / 模型` 全部可独立开关（官方版升级后仅剩状态与耗时）；
 - **manifest 契约合规**：`contracts.tools` 完整声明 39 个 `feishu_*` 工具，与代码注册逐一对应，agent 工具注册不再被 10.x 主机拒绝；
 - **命令授权透明**：已配对主人未显式配置 `allowFrom` 时，系统命令给出明确拒绝原因而非静默丢弃；`channelId` 与 `conversationId` 分离，命令归属不再混淆；
-- **安全与维护**：随 ClawHub 安全审计持续修复（8 项文案 + 10.12 的 9 组真实问题：日历参会人权限默认收紧为 none、云文档评论身份声明如实化、VC 会议合成事件静默处理、MCP 工具包固定版本、批量删除/客户导入警告补全、授权文案弱化；10.13 远程媒体下载重定向 SSRF 收紧）；`reports/` 等内部材料不入发布包。
+- **安全与维护**：随 ClawHub 安全审计持续修复（8 项文案 + 10.12 的 9 组真实问题：日历参会人权限默认收紧为 none、云文档评论身份声明如实化、VC 会议合成事件静默处理、MCP 工具包固定版本、批量删除/客户导入警告补全、授权文案弱化；10.13 远程媒体下载重定向 SSRF 收紧；10.14 SSRF 根治（CIDR 数值匹配 / A+AAAA 全校验 / IP pin 防 rebinding / 25MB 流式上限 / abort 仅发起者可取消）；`reports/` 等内部材料不入发布包。
 
 > 每个版本的详细变更（修复内容、根因、权威包 sha256）见 [GitHub Releases](https://github.com/hotwvpyym/openclaw-lark-compat/releases) 与仓库 [CHANGELOG](./CHANGELOG.md)。
 
@@ -60,7 +60,7 @@
 
 ## 二、兼容版本（Compatibility）
 
-兼容 OpenClaw **2026.8.1 及以上所有稳定版**（当前最新验证版本：**2026.10.10**，官方 stable 生产实测；仅维护稳定版，beta 不在支持范围）。
+兼容 OpenClaw **2026.8.1 及以上所有稳定版**（当前最新验证版本：**2026.11.4**，官方 stable 生产实测；仅维护稳定版，beta 不在支持范围）。
 
 已实测：`2026.8.1 / 2026.8.35 / 2026.9.6 / 2026.9.7（生产实测）/ 2026.9.8 / 2026.10.3 / 2026.10.5 / 2026.10.7（生产实测）/ 2026.10.10（官方 stable，生产实测）`——typecheck 全 0 错误，生产服务器全功能实测通过（消息收发 / 插件加载 / 页脚六项 / 工具注册）。
 
@@ -80,12 +80,12 @@
 **方式 A：本地 tgz 安装（推荐，最可控）**
 
 ```bash
-openclaw plugins install npm-pack:/path/to/hotwvpyym-openclaw-lark-2026.10.13.tgz --force --accept-capabilities
+openclaw plugins install npm-pack:/path/to/hotwvpyym-openclaw-lark-2026.10.14.tgz --force --accept-capabilities
 ```
 
 **方式 B：从 GitHub Release 下载**
 
-在 [Releases](../../releases) 页面下载 `hotwvpyym-openclaw-lark-2026.10.13.tgz`，然后按方式 A 安装。
+在 [Releases](../../releases) 页面下载 `hotwvpyym-openclaw-lark-2026.10.14.tgz`，然后按方式 A 安装。
 
 **方式 C：ClawHub / npm（发布后可用）**
 
@@ -97,7 +97,7 @@ openclaw plugins install npm:@hotwvpyym/openclaw-lark  # npm
 安装完成后确认：
 
 ```bash
-openclaw plugins list        # 应看到 openclaw-lark，版本 2026.10.13
+openclaw plugins list        # 应看到 openclaw-lark，版本 2026.10.14
 openclaw gateway restart     # 若安装过程提示 drain 超时，用此命令兜底
 ```
 
@@ -162,7 +162,7 @@ openclaw config set channels.feishu.footer.model true     # 模型
 
 每个版本的详细更新说明（修复内容、发布原因、权威包 sha256）请查看 [GitHub Releases](https://github.com/hotwvpyym/openclaw-lark-compat/releases)。
 
-当前版本：**2026.10.13**（兼容 OpenClaw 2026.8.1 – 2026.11.2 stable；三渠道同源发布：npm / GitHub Release / ClawHub，包内容逐字节一致）。
+当前版本：**2026.10.14**（兼容 OpenClaw 2026.8.1 – 2026.11.4 stable；三渠道同源发布：npm / GitHub Release / ClawHub，包内容逐字节一致）。
 
 > **2026.10.10 主要变更**：manifest 补齐 `contracts.tools` 声明（39 个 `feishu_*` 工具，与代码注册逐一对应，10.x 主机工具注册不再被拒）；修复 10.x 命令授权——已配对主人未显式配置 `allowFrom` 时，系统命令不再静默失败（`delivered=false`）。完整变更见 Releases。
 

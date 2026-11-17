@@ -118,17 +118,35 @@ export async function handleMessageEvent(ctx: MonitorContext, data: unknown): Pr
     // reply dispatcher for this chat, fire abortCard() immediately
     // (before the message enters the serial queue) so the streaming
     // card is terminated without waiting for the current task.
+    //
+    // Authorization gate: only the user who initiated the currently-running
+    // dispatcher may abort it. In group chats this prevents any other member
+    // from interrupting someone else's run by just typing "stop". In 1:1
+    // chats (p2p) the requester is trivially the only participant, so we
+    // allow any sender.
     const abortText = extractRawTextFromEvent(event);
     if (abortText && isLikelyAbortText(abortText)) {
       const queueKey = buildQueueKey(accountId, chatId, threadId);
       if (hasActiveTask(queueKey)) {
         const active = getActiveDispatcher(queueKey);
         if (active) {
-          log(`feishu[${accountId}]: abort fast-path triggered for chat ${chatId} (text="${abortText}")`);
-          active.abortController?.abort();
-          active.abortCard().catch((err) => {
-            error(`feishu[${accountId}]: abort fast-path abortCard failed: ${String(err)}`);
-          });
+          const senderOpenIdFast = event.sender?.sender_id?.open_id;
+          const chatTypeFast = event.message?.chat_type;
+          const isGroup = chatTypeFast === 'group';
+          const allowed = !isGroup || (
+            active.initiatorOpenId !== undefined &&
+            senderOpenIdFast !== undefined &&
+            active.initiatorOpenId === senderOpenIdFast
+          );
+          if (allowed) {
+            log(`feishu[${accountId}]: abort fast-path triggered for chat ${chatId} (text="${abortText}")`);
+            active.abortController?.abort();
+            active.abortCard().catch((err) => {
+              error(`feishu[${accountId}]: abort fast-path abortCard failed: ${String(err)}`);
+            });
+          } else {
+            log(`feishu[${accountId}]: abort fast-path ignored for non-initiating sender in chat ${chatId}`);
+          }
         }
       }
     }

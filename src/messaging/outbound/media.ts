@@ -12,6 +12,8 @@
 
 import * as dns from 'node:dns/promises';
 import * as fs from 'node:fs';
+import * as http from 'node:http';
+import * as https from 'node:https';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -922,46 +924,220 @@ export async function fetchRemoteImageBuffer(url: string): Promise<Buffer> {
 }
 
 // ---------------------------------------------------------------------------
-// SSRF protection — private/reserved IP filtering
+// SSRF protection — CIDR-based private/reserved IP filtering
 // ---------------------------------------------------------------------------
+
+/** Maximum remote-media download size (25 MB). */
+const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
+
+/** Max concurrent remote-media downloads (bounded gate). */
+const MAX_MEDIA_CONCURRENCY = 4;
+let activeMediaDownloads = 0;
+const mediaDownloadWaitQueue: Array<() => void> = [];
+
+async function acquireMediaSlot(): Promise<() => void> {
+  if (activeMediaDownloads >= MAX_MEDIA_CONCURRENCY) {
+    await new Promise<void>((resolve) => mediaDownloadWaitQueue.push(resolve));
+  }
+  activeMediaDownloads += 1;
+  return () => {
+    activeMediaDownloads -= 1;
+    const next = mediaDownloadWaitQueue.shift();
+    next?.();
+  };
+}
+
+// ---- IPv4 CIDR matching (numeric, not string-prefix) ----
+
+function ipv4ToLong(ip: string): number {
+  const parts = ip.split('.').map(Number);
+  return (
+    ((parts[0] << 24) >>> 0) +
+    ((parts[1] << 16) >>> 0) +
+    ((parts[2] << 8) >>> 0) +
+    (parts[3] >>> 0)
+  );
+}
+
+function ipv4InCidr(ip: string, cidr: string): boolean {
+  const [base, bitsStr] = cidr.split('/');
+  const bits = Number(bitsStr);
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+  return (ipv4ToLong(ip) & mask) === (ipv4ToLong(base) & mask);
+}
+
+const BLOCKED_V4_CIDRS: readonly string[] = [
+  '0.0.0.0/8',          // "this" network
+  '10.0.0.0/8',         // private
+  '100.64.0.0/10',      // CGNAT
+  '127.0.0.0/8',        // loopback
+  '169.254.0.0/16',     // link-local / cloud metadata
+  '172.16.0.0/12',      // private
+  '192.0.0.0/24',       // IETF protocol assignments
+  '192.0.2.0/24',       // TEST-NET-1
+  '192.88.99.0/24',     // 6to4 relay anycast
+  '192.168.0.0/16',     // private
+  '198.18.0.0/15',      // benchmarking
+  '198.51.100.0/24',    // TEST-NET-2
+  '203.0.113.0/24',     // TEST-NET-3
+  '224.0.0.0/4',        // multicast
+  '240.0.0.0/4',        // reserved (future use)
+  '255.255.255.255/32', // broadcast
+];
+
+// ---- IPv6 CIDR matching (BigInt) ----
+
+function expandIpv6(ip: string): string | null {
+  if (ip.includes('::')) {
+    const [left, right] = ip.split('::');
+    const leftParts = left ? left.split(':') : [];
+    const rightParts = right ? right.split(':') : [];
+    const missing = 8 - leftParts.length - rightParts.length;
+    if (missing < 0) return null;
+    ip = [...leftParts, ...Array(missing).fill('0'), ...rightParts].join(':');
+  }
+  const parts = ip.split(':');
+  if (parts.length !== 8) return null;
+  return parts.join(':');
+}
+
+function ipv6ToBigInt(ip: string): bigint | null {
+  const expanded = expandIpv6(ip);
+  if (!expanded) return null;
+  let result = 0n;
+  for (const p of expanded.split(':')) {
+    const val = parseInt(p || '0', 16);
+    if (Number.isNaN(val)) return null;
+    result = (result << 16n) + BigInt(val);
+  }
+  return result;
+}
+
+function ipv6InCidr(ip: string, cidr: string): boolean {
+  const [base, bitsStr] = cidr.split('/');
+  const bits = Number(bitsStr);
+  const ipBig = ipv6ToBigInt(ip);
+  const baseBig = ipv6ToBigInt(base);
+  if (ipBig === null || baseBig === null) return false;
+  const fullMask = (1n << 128n) - 1n;
+  const shift = BigInt(128 - bits);
+  const maskV = shift >= 128 ? 0n : fullMask ^ ((1n << shift) - 1n);
+  return (ipBig & maskV) === (baseBig & maskV);
+}
+
+const BLOCKED_V6_CIDRS: readonly string[] = [
+  '::/128',         // unspecified
+  '::1/128',        // loopback
+  '::ffff:0:0/96',  // IPv4-mapped (handled separately but block as belt-suspenders)
+  '100::/64',       // discard prefix
+  'fc00::/7',       // ULA
+  'fe80::/10',      // link-local
+  'ff00::/8',       // multicast
+  '2001:db8::/32',  // documentation
+];
+
+/**
+ * Unwrap an IPv4-mapped IPv6 address (e.g. ::ffff:10.1.2.3 or ::ffff:7f00:1)
+ * and return the embedded IPv4 dotted-quad, if any.
+ */
+function extractEmbeddedIpv6Mapped(ip: string): string | null {
+  // Dotted form: ::ffff:a.b.c.d
+  const dotted = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (dotted) return dotted[1];
+  // Hex form: ::ffff:0:7f00:1 → split last two groups as IPv4
+  const expanded = expandIpv6(ip.toLowerCase());
+  if (!expanded) return null;
+  const parts = expanded.split(':');
+  // ::ffff:0:0:7f00:1 → parts[4..7] = mapped v4
+  if (parts[0] === '0' && parts[1] === '0' && parts[2] === '0' && parts[3] === 'ffff') {
+    const a = parseInt(parts[4], 16);
+    const b = parseInt(parts[5], 16);
+    const c = parseInt(parts[6], 16);
+    const d = parseInt(parts[7], 16);
+    if ([a, b, c, d].every((n) => !Number.isNaN(n) && n >= 0 && n <= 255)) {
+      return `${a}.${b}.${c}.${d}`;
+    }
+  }
+  return null;
+}
 
 /**
  * Check whether an IP address belongs to a private or reserved range.
  *
- * Blocks: 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
- * 169.254.0.0/16 (link-local / cloud metadata), 100.64.0.0/10 (CGNAT),
- * 0.0.0.0, IPv4-mapped IPv6 (::ffff:a.b.c.d), IPv6 loopback (::1),
- * link-local (fe80::), ULA (fc/fd).
+ * Uses CIDR numeric matching (not string-prefix heuristics) for both IPv4
+ * and IPv6. IPv4-mapped IPv6 addresses are unwrapped before checking.
  */
-function isPrivateIP(ip: string): boolean {
-  // Unwrap IPv4-mapped IPv6 forms (e.g. ::ffff:10.1.2.3) before IPv4 checks.
-  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-  const v4 = mapped ? mapped[1] : ip;
+function isBlockedIp(ip: string): boolean {
+  const v = ip.trim().toLowerCase();
 
-  // IPv4 private / reserved ranges
-  if (v4.startsWith('127.')) return true;
-  if (v4.startsWith('10.')) return true;
-  if (v4.startsWith('192.168.')) return true;
-  if (v4.startsWith('169.254.')) return true;
-  if (v4 === '0.0.0.0') return true;
-  if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(v4)) return true;
-  // CGNAT carrier-grade NAT range 100.64.0.0/10
-  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v4)) return true;
+  // Unwrap IPv4-mapped IPv6 first
+  const mappedV4 = extractEmbeddedIpv6Mapped(v);
+  if (mappedV4) {
+    return BLOCKED_V4_CIDRS.some((cidr) => ipv4InCidr(mappedV4, cidr));
+  }
 
-  // IPv6 private / reserved ranges
-  if (ip === '::1' || ip === '::') return true;
-  if (ip.startsWith('fe80:')) return true; // link-local
-  if (ip.startsWith('fc') || ip.startsWith('fd')) return true; // ULA
+  if (net.isIPv4(v)) {
+    return BLOCKED_V4_CIDRS.some((cidr) => ipv4InCidr(v, cidr));
+  }
+  if (net.isIPv6(v)) {
+    return BLOCKED_V6_CIDRS.some((cidr) => ipv6InCidr(v, cidr));
+  }
   return false;
 }
 
 /**
- * Validate that a remote URL does not target private/reserved IP addresses.
+ * Resolve a hostname to ALL of its IP addresses (A + AAAA) and validate
+ * each one against blocked ranges. Returns the list of approved public
+ * IPs the caller may pin to.
  *
- * Resolves the hostname via DNS and checks all returned addresses.
- * Rejects URLs with non-http(s) protocols.
+ * Fails closed: any resolution error or any blocked address rejects the
+ * whole request (we do not silently continue with a different record).
  */
-async function validateRemoteUrl(raw: string): Promise<void> {
+async function resolveAndValidateHost(hostname: string): Promise<string[]> {
+  // Literal IP — validate directly.
+  if (net.isIP(hostname)) {
+    if (isBlockedIp(hostname)) {
+      throw new Error(`[feishu-media] Blocked IP "${hostname}" (SSRF protection).`);
+    }
+    return [hostname];
+  }
+
+  let resolved: Array<{ address: string; family: number }>;
+  try {
+    // all:true returns both A and AAAA; verbatim:true preserves DNS order.
+    resolved = await dns.lookup(hostname, { all: true, verbatim: true });
+  } catch (err) {
+    throw new Error(
+      `[feishu-media] DNS resolution failed for "${hostname}": ${String(err)}. ` +
+        `Refusing to fetch (SSRF protection: ambiguous resolution is rejected).`,
+      { cause: err },
+    );
+  }
+
+  if (resolved.length === 0) {
+    throw new Error(
+      `[feishu-media] Hostname "${hostname}" resolved to no addresses (SSRF protection).`,
+    );
+  }
+
+  const approved: string[] = [];
+  for (const rec of resolved) {
+    if (isBlockedIp(rec.address)) {
+      throw new Error(
+        `[feishu-media] Hostname "${hostname}" resolves to blocked address "${rec.address}" (SSRF protection).`,
+      );
+    }
+    approved.push(rec.address);
+  }
+  return approved;
+}
+
+/**
+ * Validate that a remote URL does not target private/reserved IP addresses.
+ * Returns the list of approved IP addresses the caller should pin to.
+ * Rejects non-http(s) protocols.
+ */
+async function validateRemoteUrl(raw: string): Promise<{ url: URL; approvedIps: string[] }> {
   const parsed = new URL(raw);
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error(
@@ -971,41 +1147,112 @@ async function validateRemoteUrl(raw: string): Promise<void> {
   }
 
   const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
+  const approvedIps = await resolveAndValidateHost(hostname);
+  return { url: parsed, approvedIps };
+}
 
-  if (net.isIP(hostname)) {
-    // URL contains a literal IP address — check it directly.
-    if (isPrivateIP(hostname)) {
-      throw new Error(
-        `[feishu-media] Access to private/reserved IP "${hostname}" is denied (SSRF protection). ` +
-          `URL: "${raw}"`,
-      );
-    }
-  } else {
-    // Resolve the domain and check every address it points to.
-    try {
-      const addresses = await dns.resolve(hostname);
-      for (const addr of addresses) {
-        if (isPrivateIP(addr)) {
-          throw new Error(
-            `[feishu-media] Domain "${hostname}" resolves to private/reserved IP "${addr}" (SSRF protection). ` +
-              `URL: "${raw}"`,
-          );
+// ---------------------------------------------------------------------------
+// Pinned HTTP fetch (eliminates DNS-rebinding TOCTOU)
+// ---------------------------------------------------------------------------
+
+interface PinnedFetchResult {
+  statusCode: number;
+  headers: http.IncomingHttpHeaders;
+  body: Buffer;
+}
+
+/**
+ * Perform an HTTP(S) request pinned to an already-validated IP address.
+ *
+ * TCP connects to `approvedIp` directly (no re-resolution), while TLS
+ * SNI and the Host header use the original hostname so virtual-hosting
+ * and certificate validation continue to work. Enforces a hard byte cap
+ * on the response body — over-limit responses abort immediately.
+ */
+function pinnedRequest(
+  targetUrl: URL,
+  approvedIp: string,
+  timeoutMs: number,
+): Promise<PinnedFetchResult> {
+  const isHttps = targetUrl.protocol === 'https:';
+  const lib = isHttps ? https : http;
+  const port = targetUrl.port ? Number(targetUrl.port) : isHttps ? 443 : 80;
+  const originalHost = targetUrl.hostname.replace(/^\[|\]$/g, '');
+
+  return new Promise((resolve, reject) => {
+    const req = lib.request(
+      {
+        // Connect to the validated IP directly — no DNS re-lookup.
+        host: approvedIp,
+        port,
+        method: 'GET',
+        path: targetUrl.pathname + targetUrl.search,
+        headers: {
+          host: targetUrl.host,
+          accept: '*/*',
+        },
+        // Preserve TLS certificate validation against the original hostname.
+        servername: isHttps ? originalHost : undefined,
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const statusCode = res.statusCode ?? 502;
+        const headers = res.headers;
+
+        // Redirect: hand back without consuming body so caller can follow.
+        if (statusCode >= 300 && statusCode < 400) {
+          // Drain and discard the redirect body.
+          res.resume();
+          resolve({ statusCode, headers, body: Buffer.alloc(0) });
+          return;
         }
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('SSRF protection')) {
-        throw err;
-      }
-      // Fail closed: DNS resolution failure is ambiguous (could be a rebinding
-      // or a flaky resolver hiding an internal target) — refuse instead of
-      // letting fetch follow its own resolution.
-      throw new Error(
-        `[feishu-media] DNS resolution failed for "${hostname}": ${err}. ` +
-          `Refusing to fetch (SSRF protection: ambiguous resolution is rejected).`,
-        { cause: err },
-      );
-    }
-  }
+
+        // Early reject based on Content-Length.
+        const contentLength = Number(headers['content-length'] ?? 0);
+        if (contentLength > MAX_MEDIA_BYTES) {
+          res.resume();
+          reject(
+            new Error(
+              `[feishu-media] Response body ${contentLength} bytes exceeds ${MAX_MEDIA_BYTES} byte limit (SSRF/memory protection).`,
+            ),
+          );
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        let total = 0;
+        let aborted = false;
+        res.on('data', (chunk: Buffer) => {
+          if (aborted) return;
+          total += chunk.length;
+          if (total > MAX_MEDIA_BYTES) {
+            aborted = true;
+            req.destroy();
+            reject(
+              new Error(
+                `[feishu-media] Response body exceeded ${MAX_MEDIA_BYTES} byte limit mid-stream (memory protection).`,
+              ),
+            );
+            return;
+          }
+          chunks.push(chunk);
+        });
+        res.on('end', () => {
+          if (aborted) return;
+          resolve({ statusCode, headers, body: Buffer.concat(chunks) });
+        });
+        res.on('error', (err) => {
+          if (!aborted) reject(err);
+        });
+      },
+    );
+    req.on('error', (err) => reject(err));
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`[feishu-media] Request timed out after ${timeoutMs}ms.`));
+    });
+    req.end();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1045,55 +1292,56 @@ async function fetchMediaBuffer(urlOrPath: string, localRoots?: readonly string[
     return buf;
   }
 
-  // Remote URL — validate against SSRF before fetching.
-  await validateRemoteUrl(raw);
-
+  // Remote URL — validate against SSRF, then pin each connection.
   const FETCH_TIMEOUT_MS = 30_000;
-  /** Max redirect hops — each hop is re-validated before connecting. */
+  /** Max redirect hops — each hop is re-validated and re-pinned. */
   const MAX_MEDIA_REDIRECTS = 5;
   log.info(`fetching remote media: ${raw}`);
 
-  const arrayBuffer = await withRetry(async () => {
-    let currentUrl = raw;
-    for (let hop = 0; hop <= MAX_MEDIA_REDIRECTS; hop++) {
-      // Manual redirect handling: never let the HTTP client follow Location
-      // headers on its own — every destination must pass SSRF validation first.
-      const response = await fetch(currentUrl, {
-        redirect: 'manual',
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
+  const releaseSlot = await acquireMediaSlot();
+  try {
+    const arrayBuffer = await withRetry(async () => {
+      let currentUrlStr = raw;
+      for (let hop = 0; hop <= MAX_MEDIA_REDIRECTS; hop++) {
+        // Validate current target and get approved IPs (A+AAAA all checked).
+        const { url: currentUrl, approvedIps } = await validateRemoteUrl(currentUrlStr);
+        // Pin to the first approved IP — TCP never re-resolves DNS.
+        const pinnedIp = approvedIps[0];
 
-      const location = response.headers.get('location');
-      if (response.status >= 300 && response.status < 400 && location) {
-        if (hop >= MAX_MEDIA_REDIRECTS) {
-          throw new Error(
-            `[feishu-media] Too many redirects (>${MAX_MEDIA_REDIRECTS}) while fetching "${raw}".`,
-          );
+        const resp = await pinnedRequest(currentUrl, pinnedIp, FETCH_TIMEOUT_MS);
+        const location = resp.headers['location'];
+
+        if (resp.statusCode >= 300 && resp.statusCode < 400 && location) {
+          if (hop >= MAX_MEDIA_REDIRECTS) {
+            throw new Error(
+              `[feishu-media] Too many redirects (>${MAX_MEDIA_REDIRECTS}) while fetching "${raw}".`,
+            );
+          }
+          const nextUrl = new URL(Array.isArray(location) ? location[0] : location, currentUrl).toString();
+          log.debug(`redirect hop ${hop + 1}: ${currentUrlStr} -> ${nextUrl}`);
+          // Next loop iteration re-validates and re-pins the new target.
+          currentUrlStr = nextUrl;
+          continue;
         }
-        const nextUrl = new URL(location, currentUrl).toString();
-        log.debug(`redirect hop ${hop + 1}: ${currentUrl} -> ${nextUrl}`);
-        // Re-validate every redirect target (blocks public -> private jumps).
-        await validateRemoteUrl(nextUrl);
-        currentUrl = nextUrl;
-        continue;
-      }
 
-      if (!response.ok) {
-        // Attach status so withRetry can inspect it.
-        const err: Error & { status?: number } = new Error(
-          `[feishu-media] Failed to fetch media from "${currentUrl}": ` +
-            `HTTP ${response.status} ${response.statusText}. ` +
-            `Verify the URL is accessible and returns a valid media resource.`,
-        );
-        err.status = response.status;
-        throw err;
-      }
-      return response.arrayBuffer();
-    }
-    // Unreachable (loop guard above always throws or returns), but keep TS happy.
-    throw new Error(`[feishu-media] Unreachable state while fetching "${raw}".`);
-  }, `fetchMedia(${raw})`);
+        if (resp.statusCode < 200 || resp.statusCode >= 300) {
+          const err: Error & { status?: number } = new Error(
+            `[feishu-media] Failed to fetch media from "${currentUrlStr}": ` +
+              `HTTP ${resp.statusCode}. Verify the URL is accessible and returns a valid media resource.`,
+          );
+          err.status = resp.statusCode;
+          throw err;
+        }
 
-  log.debug(`remote media fetched: ${raw}, ${arrayBuffer.byteLength} bytes`);
-  return Buffer.from(arrayBuffer);
+        return resp.body;
+      }
+      // Unreachable (loop guard above always throws or returns).
+      throw new Error(`[feishu-media] Unreachable state while fetching "${raw}".`);
+    }, `fetchMedia(${raw})`);
+
+    log.debug(`remote media fetched: ${raw}, ${arrayBuffer.byteLength} bytes`);
+    return arrayBuffer;
+  } finally {
+    releaseSlot();
+  }
 }
